@@ -4,10 +4,10 @@ import os
 class Scrabble:
     def __init__(self):
         self.board = [[" " for _ in range(15)] for _ in range(15)]
-        self.letter_bag = list("AAAAAAAEEEEEEIIIOOOUUBBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUUVVWWXXYYZZ  ")  # Incluye 2 espacios en blanco
-        random.shuffle(self.letter_bag)
+        self.letters = list("AAAAAAAEEEEEEIIIOOOUUBBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUUVVWWXXYYZZ  ")
+        random.shuffle(self.letters)
         self.players = []
-        self.current_turn = 0
+        self.actual_turn = 0
         self.scores = []
         self.first_move = True
 
@@ -46,8 +46,8 @@ class Scrabble:
     def draw_tiles(self, num):
         tiles = []
         for _ in range(num):
-            if self.letter_bag:
-                tiles.append(self.letter_bag.pop())
+            if self.letters:
+                tiles.append(self.letters.pop())
         return tiles
 
     def start_game(self):
@@ -55,7 +55,7 @@ class Scrabble:
             print(f"Fichas de {player['name']}: {', '.join(player['tiles'])}")
 
     def display_board(self):
-        print("    " + "   ".join([str(i).zfill(2) for i in range(15)]))
+        print("   " + "  ".join([str(i).zfill(2) for i in range(15)]))
         print("  +" + "---+" * 15)
         for idx, row in enumerate(self.board):
             print(str(idx).zfill(2) + " | " + " | ".join(row) + " |")
@@ -107,59 +107,63 @@ class Scrabble:
         return word_score * word_multiplier
 
     def place_word(self, player_idx, word, row, col, direction):
-        if direction not in ['horizontal', 'vertical']:
+        player_tiles = self.players[player_idx]['tiles']
+
+        # Validar que la palabra usa solo letras disponibles en las fichas del jugador
+        while not all(word.count(letter) <= player_tiles.count(letter) for letter in word):
+            print("¡Palabra inválida! Contiene letras que no tienes.")
+            word = input("Ingresa una palabra válida: ").upper()
+
+        # Validar la dirección hasta que sea correcta
+        while direction not in ['horizontal', 'vertical', 'h', 'v']:
             print("¡Dirección inválida! Usa 'horizontal' o 'vertical'.")
-            return False
+            direction = input("Ingresa la dirección nuevamente (horizontal/vertical/h/v): ").lower()
 
         if self.first_move:
-            # Verificar si la palabra pasa por el centro del tablero (7, 7)
-            if not (direction == 'horizontal' and col <= 7 < col + len(word)) and not (direction == 'vertical' and row <= 7 < row + len(word)):
+            # Verificar si la palabra pasa por el centro del tablero (7,7)
+            if not ((direction in ['horizontal', 'h'] and col <= 7 < col + len(word)) or
+                    (direction in ['vertical', 'v'] and row <= 7 < row + len(word))):
                 print("La primera palabra debe pasar por el centro del tablero.")
                 return False
 
-        if direction == 'horizontal':
-            if col + len(word) > 15:
-                print("¡La palabra no cabe en el tablero!")
-                return False
+        # Verificar si la palabra cabe en el tablero
+        if (direction in ['horizontal', 'h'] and col + len(word) > 15) or (
+                direction in ['vertical', 'v'] and row + len(word) > 15):
+            print("¡La palabra no cabe en el tablero!")
+            return False
+
+        # Verificar si hay conflictos con letras existentes en el tablero
+        if direction in ['horizontal', 'h']:
             for i, letter in enumerate(word):
-                if letter == " ":
-                    continue
                 if self.board[row][col + i] not in [' ', letter]:
-                    print("¡La palabra entra en conflicto con letras existentes en el tablero!")
+                    print("¡La palabra entra en conflicto con letras en el tablero!")
                     return False
+        else:
             for i, letter in enumerate(word):
-                if letter == " ":
-                    continue
+                if self.board[row + i][col] not in [' ', letter]:
+                    print("¡La palabra entra en conflicto con letras en el tablero!")
+                    return False
+
+        # Colocar la palabra en el tablero
+        if direction in ['horizontal', 'h']:
+            for i, letter in enumerate(word):
                 self.board[row][col + i] = letter
         else:
-            if row + len(word) > 15:
-                print("¡La palabra no cabe en el tablero!")
-                return False
             for i, letter in enumerate(word):
-                if letter == " ":
-                    continue
-                if self.board[row + i][col] not in [' ', letter]:
-                    print("¡La palabra entra en conflicto con letras existentes en el tablero!")
-                    return False
-            for i, letter in enumerate(word):
-                if letter == " ":
-                    continue
                 self.board[row + i][col] = letter
 
-        # Update score
+        # Calcular y actualizar puntaje
         word_score = self.calculate_word_score(word, row, col, direction)
         self.scores[player_idx] += word_score
         self.first_move = False
 
-        # Remove used tiles from the player's tiles and draw new ones
-        player_tiles = self.players[player_idx]['tiles']
+        # Remover fichas usadas y reponer nuevas
         for letter in word:
-            if letter == " ":
-                continue
             if letter in player_tiles:
                 player_tiles.remove(letter)
-            elif " " in player_tiles:
-                player_tiles.remove(" ")  # Tratar fichas en blanco como cualquier letra
+            elif " " in player_tiles:  # Permitir uso de fichas en blanco como comodín
+                player_tiles.remove(" ")
+
         new_tiles = self.draw_tiles(7 - len(player_tiles))
         self.players[player_idx]['tiles'].extend(new_tiles)
 
@@ -180,17 +184,17 @@ class Scrabble:
                 player_tiles.remove(letter)
             elif " " in player_tiles:
                 player_tiles.remove(" ")  # Tratar fichas en blanco como cualquier letra
-            self.letter_bag.append(letter)
+            self.letters.append(letter)
 
         # Shuffle the letter bag and draw new tiles
-        random.shuffle(self.letter_bag)
+        random.shuffle(self.letters)
         new_tiles = self.draw_tiles(len(tiles_to_change))
         player_tiles.extend(new_tiles)
 
         return True
 
     def next_turn(self):
-        self.current_turn = (self.current_turn + 1) % len(self.players)
+        self.actual_turn = (self.current_turn + 1) % len(self.players)
 
     def play_game(self):
         self.start_game()
@@ -200,9 +204,22 @@ class Scrabble:
             current_player = self.players[self.current_turn]
             print(f"Turno de {current_player['name']}!")
             print(f"Fichas restantes: {', '.join(current_player['tiles'])}")
-            action = input("Elige una acción: (1) Colocar palabra (2) Cambiar letras (3) Pasar turno: ")
 
-            if action == '1':
+            # Asegurar que la entrada sea válida
+            while True:
+                action = input("Elige una acción: (1) Colocar palabra (2) Cambiar letras (3) Pasar turno: ")
+
+                if action.isdigit():  # Verifica si es un número
+                    action = int(action)
+                    if 1 <= action <= 3:  # Solo acepta 1, 2 o 3
+                        break
+                    else:
+                        print("Número fuera de rango. Debe ser 1, 2 o 3.")
+                else:
+                    print("Entrada inválida. Debes ingresar un número (1, 2 o 3).")
+
+            # Ejecutar la acción seleccionada
+            if action == 1:
                 word = input("Ingresa la palabra a colocar: ").upper()
                 row = int(input("Ingresa la fila (0-14): "))
                 col = int(input("Ingresa la columna (0-14): "))
@@ -213,17 +230,16 @@ class Scrabble:
                     self.scores[self.current_turn] += 50 if len(word) == 7 else 0  # Bonus por usar todas las fichas
                 else:
                     print("No se pudo colocar la palabra.")
-            elif action == '2':
+            elif action == 2:
                 if not self.change_tiles(self.current_turn):
                     print("No se pudieron cambiar las letras.")
-            elif action == '3':
+            elif action == 3:
                 print(f"{current_player['name']} pasa su turno.")
-            else:
-                print("Acción no válida.")
 
-            input("Presiona Enter para continuar...")
-            self.next_turn()
+            # **Cambio de turno**
+            self.actual_turn = (self.actual_turn + 1) % len(self.players)
 
+            # Opción para salir del juego
             if input("Escribe 'salir' para terminar el juego o presiona Enter para continuar: ").lower() == 'salir':
                 break
 
